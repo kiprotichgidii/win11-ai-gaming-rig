@@ -73,17 +73,43 @@ docker exec -it ollama ollama pull llama3.1:8b
 
 ---
 
-## VRAM Management During Gaming Sessions
+---
 
-* **Ollama:** Configured with `OLLAMA_KEEP_ALIVE=5m`. It automatically flushes model weights from VRAM after 5 minutes of idle time.
-* **ComfyUI:** Diffusion checkpoints can occupy 8–16 GB of VRAM. Before launching graphics-heavy games:
-  ```powershell
-  # Free VRAM:
-  docker stop comfyui
+## Starting the Stack
 
-  # Resume ComfyUI after gaming:
-  docker start comfyui
-  ```
+You can start or restart the AI stack at any time with the included helper script:
+
+```powershell
+# One-liner to refresh PATH, ensure Docker is running, and launch the stack:
+irm https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Start-Stack.ps1 | iex
+```
+
+Or manually:
+```powershell
+# 1. Refresh PATH if Docker was just installed:
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+# 2. Launch Docker Desktop (if not already running):
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+
+# 3. Start the containers:
+cd C:\ai-stack
+docker compose up -d
+```
+
+---
+
+## Troubleshooting & Useful Commands
+
+| Issue / Action | Command |
+| :--- | :--- |
+| **`docker` command not recognized** | `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")` |
+| **Check container status** | `cd C:\ai-stack; docker compose ps` |
+| **View Ollama logs** | `docker logs -f ollama` |
+| **Pull a coding model** | `docker exec -it ollama ollama pull qwen2.5-coder:7b` |
+| **Free GPU VRAM for gaming** | `docker stop comfyui` |
+| **Resume ComfyUI after gaming** | `docker start comfyui` |
+| **Verify Firewall Rules** | `Get-NetFirewallRule -Name "AI-Stack-*" \| Format-Table Name, Enabled` |
 
 ---
 
