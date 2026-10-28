@@ -13,9 +13,8 @@ You do **not** need Git pre-installed on the Windows machine. Open **Windows Pow
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-irm https://raw.githubusercontent.com/<YOUR-USERNAME>/<YOUR-REPO>/main/Setup-Rig.ps1 | iex
+irm https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1 | iex
 ```
-*(Replace `<YOUR-USERNAME>` and `<YOUR-REPO>` with your GitHub repository path).*
 
 ---
 
@@ -23,7 +22,7 @@ irm https://raw.githubusercontent.com/<YOUR-USERNAME>/<YOUR-REPO>/main/Setup-Rig
 
 ```powershell
 # In PowerShell (Admin)
-git clone https://github.com/<YOUR-USERNAME>/<YOUR-REPO>.git C:\Automate-Rig
+git clone https://github.com/kiprotichgidii/win11-ai-gaming-rig.git C:\Automate-Rig
 cd C:\Automate-Rig
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\Setup-Rig.ps1
