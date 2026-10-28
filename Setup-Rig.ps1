@@ -224,6 +224,23 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             Write-Warning "Docker Desktop installer finished with exit code $($proc.ExitCode)."
         }
     }
+
+    # Refresh PATH in current PowerShell session
+    $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
+    if (Test-Path $dockerBin) {
+        $env:Path = "$dockerBin;$env:Path"
+    }
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+    # Start Docker Desktop if installed
+    $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+    if (Test-Path $dockerExe) {
+        $dockerProc = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+        if (-not $dockerProc) {
+            Write-Notice "Launching Docker Desktop to initialize the WSL2 daemon..."
+            Start-Process -FilePath $dockerExe
+        }
+    }
 } else {
     Write-Success "Docker engine found on PATH."
 }
