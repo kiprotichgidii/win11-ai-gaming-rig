@@ -13,7 +13,7 @@ You do **not** need Git pre-installed on the Windows machine. Open **Windows Pow
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-irm https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1 | iex
+irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1?$(Get-Random)" | iex
 ```
 
 ---

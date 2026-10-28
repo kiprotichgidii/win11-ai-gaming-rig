@@ -300,9 +300,9 @@ services:
     container_name: ollama
     restart: unless-stopped
     ports:
-      - "$OllamaPort:11434"
+      - "11434:11434"
     environment:
-      - OLLAMA_KEEP_ALIVE=$OllamaKeepAlive
+      - OLLAMA_KEEP_ALIVE=5m
     volumes:
       - ollama_data:/root/.ollama
     deploy:
@@ -318,7 +318,7 @@ services:
     container_name: open-webui
     restart: unless-stopped
     ports:
-      - "$WebUIPort:8080"
+      - "3000:8080"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
@@ -331,7 +331,7 @@ services:
     container_name: comfyui
     restart: unless-stopped
     ports:
-      - "$ComfyUIPort:8188"
+      - "8188:8188"
     environment:
       - CLI_ARGS=--listen 0.0.0.0 --port 8188
     volumes:
@@ -357,9 +357,9 @@ services:
     container_name: ollama
     restart: unless-stopped
     ports:
-      - "$OllamaPort:11434"
+      - "11434:11434"
     environment:
-      - OLLAMA_KEEP_ALIVE=$OllamaKeepAlive
+      - OLLAMA_KEEP_ALIVE=5m
     volumes:
       - ollama_data:/root/.ollama
 
@@ -368,7 +368,7 @@ services:
     container_name: open-webui
     restart: unless-stopped
     ports:
-      - "$WebUIPort:8080"
+      - "3000:8080"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
@@ -381,7 +381,7 @@ services:
     container_name: comfyui
     restart: unless-stopped
     ports:
-      - "$ComfyUIPort:8188"
+      - "8188:8188"
     environment:
       - CLI_ARGS=--listen 0.0.0.0 --port 8188
     volumes:
