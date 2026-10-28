@@ -9,7 +9,7 @@ $ErrorActionPreference = "Continue"
 Write-Host "==> Refreshing session PATH environment variable..." -ForegroundColor Cyan
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
-if (Test-Path $dockerBin -and ($env:Path -notlike "*$dockerBin*")) {
+if ((Test-Path $dockerBin) -and ($env:Path -notlike "*$dockerBin*")) {
     $env:Path = "$dockerBin;$env:Path"
 }
 

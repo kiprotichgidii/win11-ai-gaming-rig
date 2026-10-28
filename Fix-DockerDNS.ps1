@@ -42,7 +42,7 @@ if (Get-Command wsl -ErrorAction SilentlyContinue) {
         wsl -u root -e sh -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf"
         Write-Host "[OK] WSL2 /etc/resolv.conf updated." -ForegroundColor Green
     } catch {
-        Write-Notice "WSL command failed: $_"
+        Write-Warning "WSL command failed: $_"
     }
 }
 

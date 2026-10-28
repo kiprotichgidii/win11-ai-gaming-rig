@@ -236,7 +236,7 @@ if (-not $isDockerInstalled) {
 }
 
 # Ensure Docker is accessible in current session and service is started
-if (Test-Path $dockerBin -and ($env:Path -notlike "*$dockerBin*")) {
+if ((Test-Path $dockerBin) -and ($env:Path -notlike "*$dockerBin*")) {
     $env:Path = "$dockerBin;$env:Path"
 }
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
