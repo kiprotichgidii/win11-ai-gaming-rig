@@ -186,8 +186,12 @@ foreach ($r in $Rules) {
 Write-Step "Phase 5: Installing Required Software Packages..."
 
 # 5.1 Docker Desktop
-if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Notice "Installing Docker Desktop..."
+$dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+$dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
+$isDockerInstalled = (Get-Command docker -ErrorAction SilentlyContinue) -or (Test-Path $dockerExe)
+
+if (-not $isDockerInstalled) {
+    Write-Notice "Docker Desktop not found. Installing..."
     $installed = $false
     
     # Try winget explicitly targeting community source (bypasses msstore source errors)
@@ -211,8 +215,11 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
         
         Write-Notice "Downloading Docker Desktop installer..."
+        $prevProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue' # Dramatic speedup, prevents console freeze
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+        $ProgressPreference = $prevProgress
         
         Write-Notice "Running Docker Desktop silent installer (WSL2 backend)..."
         $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license --backend=wsl-2" -Wait -PassThru
@@ -224,39 +231,46 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
             Write-Warning "Docker Desktop installer finished with exit code $($proc.ExitCode)."
         }
     }
-
-    # Refresh PATH in current PowerShell session
-    $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
-    if (Test-Path $dockerBin) {
-        $env:Path = "$dockerBin;$env:Path"
-    }
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-    # Start Docker Desktop if installed
-    $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    if (Test-Path $dockerExe) {
-        $dockerProc = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
-        if (-not $dockerProc) {
-            Write-Notice "Launching Docker Desktop to initialize the WSL2 daemon..."
-            Start-Process -FilePath $dockerExe
-        }
-    }
 } else {
-    Write-Success "Docker engine found on PATH."
+    Write-Success "Docker Desktop is already installed on disk."
+}
+
+# Ensure Docker is accessible in current session and service is started
+if (Test-Path $dockerBin -and ($env:Path -notlike "*$dockerBin*")) {
+    $env:Path = "$dockerBin;$env:Path"
+}
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+if (Test-Path $dockerExe) {
+    $dockerProc = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+    if (-not $dockerProc) {
+        Write-Notice "Launching Docker Desktop to initialize the WSL2 daemon..."
+        Start-Process -FilePath $dockerExe
+    }
 }
 
 # 5.2 Sunshine & ViGEmBus Game Controller Driver
 if (-not $SkipStreamingInstall) {
-    Write-Notice "Installing ViGEmBus (Virtual Gamepad Emulation Bus)..."
-    Start-Process -FilePath "winget" `
-        -ArgumentList "install --id Nefarius.ViGEmBus --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
-        -NoNewWindow -Wait -ErrorAction SilentlyContinue
+    $vigemInstalled = Get-Service "ViGEmBus" -ErrorAction SilentlyContinue
+    if (-not $vigemInstalled) {
+        Write-Notice "Installing ViGEmBus (Virtual Gamepad Emulation Bus)..."
+        Start-Process -FilePath "winget" `
+            -ArgumentList "install --id Nefarius.ViGEmBus --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
+            -NoNewWindow -Wait -ErrorAction SilentlyContinue
+    } else {
+        Write-Success "ViGEmBus driver is already installed."
+    }
     
-    Write-Notice "Installing Sunshine Game Streaming Server..."
-    Start-Process -FilePath "winget" `
-        -ArgumentList "install --id LizardByte.Sunshine --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
-        -NoNewWindow -Wait -ErrorAction SilentlyContinue
-    Write-Success "Streaming tools installation completed."
+    $sunshineInstalled = (Test-Path "C:\Program Files\Sunshine\sunshine.exe") -or (Get-Service "sunshine" -ErrorAction SilentlyContinue)
+    if (-not $sunshineInstalled) {
+        Write-Notice "Installing Sunshine Game Streaming Server..."
+        Start-Process -FilePath "winget" `
+            -ArgumentList "install --id LizardByte.Sunshine --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
+            -NoNewWindow -Wait -ErrorAction SilentlyContinue
+    } else {
+        Write-Success "Sunshine Game Streaming Server is already installed."
+    }
+    Write-Success "Streaming tools verification completed."
 }
 
 # -------------------------------------------------------------------------
