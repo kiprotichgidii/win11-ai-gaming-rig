@@ -154,8 +154,26 @@ volumes:
 Set-Content -Path $composeFile -Value $cleanCompose -Encoding UTF8
 Write-Host "==> Verified compose.yaml at $composeFile ($(if ($hasNvidiaGPU) { 'GPU-Mode' } else { 'CPU-Mode' }))." -ForegroundColor Green
 
-Write-Host "==> Launching Docker Compose AI Stack..." -ForegroundColor Cyan
+# Verify Docker engine OS type (Must be 'linux')
+$osType = docker info --format '{{.OSType}}' 2>$null
+if ($osType -and $osType -ne "linux") {
+    Write-Warning "Docker Desktop is currently running in '$osType' containers mode!"
+    Write-Host "Attempting to switch Docker Desktop to Linux containers..." -ForegroundColor Yellow
+    $dockerCli = "C:\Program Files\Docker\Docker\DockerCli.exe"
+    if (Test-Path $dockerCli) {
+        & $dockerCli -SwitchLinuxEngine
+        Start-Sleep -Seconds 10
+    } else {
+        Write-Error "Please right-click Docker Desktop in the system tray and select 'Switch to Linux containers...'."
+        return
+    }
+}
+
+Write-Host "==> Pulling container images (this may take a few minutes depending on connection)..." -ForegroundColor Cyan
 Set-Location $stackDir
+docker compose pull
+
+Write-Host "==> Launching Docker Compose AI Stack..." -ForegroundColor Cyan
 docker compose up -d
 
 Write-Host "`n==> Active Container Status:" -ForegroundColor Green
