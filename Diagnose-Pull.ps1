@@ -68,7 +68,7 @@ if ($LASTEXITCODE -eq 0) {
     docker pull ghcr.io/open-webui/open-webui:main
 
     Write-Step "Step 5: Pulling ComfyUI..."
-    docker pull yanwk/comfyui-boot:latest
+    docker pull yanwk/comfyui-boot:cu130-slim-v2
 
     # Launch stack
     Write-Step "Step 6: Starting AI stack..."
@@ -110,7 +110,7 @@ services:
       - ollama
 
   comfyui:
-    image: yanwk/comfyui-boot:latest
+    image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui
     restart: unless-stopped
     ports:
@@ -160,7 +160,7 @@ services:
       - ollama
 
   comfyui:
-    image: yanwk/comfyui-boot:latest
+    image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui
     restart: unless-stopped
     ports:

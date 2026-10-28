@@ -35,7 +35,7 @@ services:
 
   # --- 3. Image/Video Diffusion Pipeline ---
   comfyui:
-    image: yanwk/comfyui-boot:latest
+    image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui
     restart: unless-stopped
     ports:

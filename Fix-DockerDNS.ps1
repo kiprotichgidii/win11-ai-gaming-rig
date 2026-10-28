@@ -184,7 +184,7 @@ services:
       - ollama
 
   comfyui:
-    image: yanwk/comfyui-boot:latest
+    image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui
     restart: unless-stopped
     ports:
@@ -234,7 +234,7 @@ services:
       - ollama
 
   comfyui:
-    image: yanwk/comfyui-boot:latest
+    image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui
     restart: unless-stopped
     ports:
