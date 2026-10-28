@@ -27,3 +27,4 @@
 - Tested VM adapter edge cases where hypervisor virtual adapters were prematurely filtered.
 - Provided fallback logic for one-liner execution via `irm <url> | iex` for machines without Git pre-installed.
 - **Winget MSStore Bug Fix**: Resolved `Failed when searching source: msstore` common in VM / unauthenticated Windows instances by appending `--source winget` and implementing an automated direct CDN fallback download for `Docker Desktop Installer.exe`.
+- **YAML Indentation Fix**: Resolved `go-yaml error in parser... did not find expected '-' indicator` caused by string interpolation appending the multiline `deploy:` block onto the `volumes:` list key. Replaced with explicit, pre-validated CPU and GPU template definitions in both `Setup-Rig.ps1` and `Start-Stack.ps1`.

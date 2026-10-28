@@ -41,10 +41,118 @@ if (-not $dockerProc) {
 
 # Launch the AI Stack
 $stackDir = "C:\ai-stack"
-if (-not (Test-Path "$stackDir\compose.yaml")) {
-    Write-Error "Could not find $stackDir\compose.yaml. Run Setup-Rig.ps1 first."
-    return
+if (-not (Test-Path $stackDir)) {
+    New-Item -ItemType Directory -Path $stackDir -Force | Out-Null
 }
+
+# Auto-heal compose.yaml if corrupted or missing
+$hasNvidiaGPU = [bool](Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" })
+$composeFile = Join-Path $stackDir "compose.yaml"
+
+if ($hasNvidiaGPU) {
+    $cleanCompose = @"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=5m
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  comfyui:
+    image: yanwk/comfyui-boot:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - comfyui_storage:/root/ComfyUI
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  comfyui_storage:
+"@
+} else {
+    $cleanCompose = @"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=5m
+    volumes:
+      - ollama_data:/root/.ollama
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  comfyui:
+    image: yanwk/comfyui-boot:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - comfyui_storage:/root/ComfyUI
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  comfyui_storage:
+"@
+}
+
+Set-Content -Path $composeFile -Value $cleanCompose -Encoding UTF8
+Write-Host "==> Verified compose.yaml at $composeFile ($(if ($hasNvidiaGPU) { 'GPU-Mode' } else { 'CPU-Mode' }))." -ForegroundColor Green
 
 Write-Host "==> Launching Docker Compose AI Stack..." -ForegroundColor Cyan
 Set-Location $stackDir

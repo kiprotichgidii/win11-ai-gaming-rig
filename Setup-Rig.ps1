@@ -284,20 +284,8 @@ if (-not (Test-Path $StackDir)) {
 
 $composeTarget = Join-Path $StackDir "compose.yaml"
 
-$gpuBlock = ""
 if ($hasNvidiaGPU) {
-    $gpuBlock = @"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-"@
-}
-
-$inlineCompose = @"
+    $composeContent = @"
 services:
   ollama:
     image: ollama/ollama:latest
@@ -308,7 +296,14 @@ services:
     environment:
       - OLLAMA_KEEP_ALIVE=$OllamaKeepAlive
     volumes:
-      - ollama_data:/root/.ollama$gpuBlock
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -330,7 +325,57 @@ services:
     ports:
       - "$ComfyUIPort:8188"
     environment:
-      - CLI_ARGS=--listen 0.0.0.0 --port 8188$gpuBlock
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - comfyui_storage:/root/ComfyUI
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  comfyui_storage:
+"@
+} else {
+    $composeContent = @"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "$OllamaPort:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=$OllamaKeepAlive
+    volumes:
+      - ollama_data:/root/.ollama
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "$WebUIPort:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  comfyui:
+    image: yanwk/comfyui-boot:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "$ComfyUIPort:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
     volumes:
       - comfyui_storage:/root/ComfyUI
 
@@ -339,8 +384,9 @@ volumes:
   open_webui_data:
   comfyui_storage:
 "@
+}
 
-Set-Content -Path $composeTarget -Value $inlineCompose -Encoding UTF8
+Set-Content -Path $composeTarget -Value $composeContent -Encoding UTF8
 Write-Success "Generated compose.yaml ($(if ($hasNvidiaGPU) { 'GPU-Accelerated' } else { 'CPU-Testing-Mode' }))."
 
 # -------------------------------------------------------------------------
