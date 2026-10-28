@@ -1,0 +1,9 @@
+# System & IDE artifacts
+.DS_Store
+Thumbs.db
+
+# Windows & Container artifacts
+*.log
+data/
+*.vhd
+*.vhdx
