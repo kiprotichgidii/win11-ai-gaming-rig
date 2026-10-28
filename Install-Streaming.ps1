@@ -7,10 +7,10 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "==> Installing ViGEmBus (Virtual Gamepad Emulation Bus)..." -ForegroundColor Cyan
-winget install --id Nefarius.ViGEmBus -e --accept-package-agreements --accept-source-agreements --silent
+winget install --id Nefarius.ViGEmBus --source winget -e --accept-package-agreements --accept-source-agreements --silent
 
 Write-Host "==> Installing Sunshine Game Streaming Server..." -ForegroundColor Cyan
-winget install --id LizardByte.Sunshine -e --accept-package-agreements --accept-source-agreements --silent
+winget install --id LizardByte.Sunshine --source winget -e --accept-package-agreements --accept-source-agreements --silent
 
 Write-Host "==> Configuring Inbound Firewall Rules for Sunshine..." -ForegroundColor Cyan
 $SunshineRules = @(

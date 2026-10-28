@@ -181,15 +181,49 @@ foreach ($r in $Rules) {
 }
 
 # -------------------------------------------------------------------------
-# Phase 5: Software Installations via Winget
+# Phase 5: Software Installations
 # -------------------------------------------------------------------------
 Write-Step "Phase 5: Installing Required Software Packages..."
 
 # 5.1 Docker Desktop
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Notice "Installing Docker Desktop..."
-    winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements --silent
-    Write-Notice "Docker Desktop installed. (Must be opened once to start the WSL daemon)."
+    $installed = $false
+    
+    # Try winget explicitly targeting community source (bypasses msstore source errors)
+    try {
+        $wingetProc = Start-Process -FilePath "winget" `
+            -ArgumentList "install --id Docker.DockerDesktop --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
+            -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
+            
+        if ($wingetProc.ExitCode -eq 0) {
+            $installed = $true
+            Write-Success "Docker Desktop installed via winget."
+        }
+    } catch {
+        Write-Notice "Winget execution failed: $_"
+    }
+
+    # Fallback to direct official installer download if winget fails or msstore blocked
+    if (-not $installed) {
+        Write-Notice "Winget failed or msstore blocked. Falling back to direct download from Docker..."
+        $installerUrl = "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
+        $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
+        
+        Write-Notice "Downloading Docker Desktop installer..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+        
+        Write-Notice "Running Docker Desktop silent installer (WSL2 backend)..."
+        $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license --backend=wsl-2" -Wait -PassThru
+        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
+        
+        if ($proc.ExitCode -eq 0) {
+            Write-Success "Docker Desktop installed successfully via direct installer."
+        } else {
+            Write-Warning "Docker Desktop installer finished with exit code $($proc.ExitCode)."
+        }
+    }
 } else {
     Write-Success "Docker engine found on PATH."
 }
@@ -197,11 +231,15 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 # 5.2 Sunshine & ViGEmBus Game Controller Driver
 if (-not $SkipStreamingInstall) {
     Write-Notice "Installing ViGEmBus (Virtual Gamepad Emulation Bus)..."
-    winget install --id Nefarius.ViGEmBus -e --accept-package-agreements --accept-source-agreements --silent
+    Start-Process -FilePath "winget" `
+        -ArgumentList "install --id Nefarius.ViGEmBus --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
+        -NoNewWindow -Wait -ErrorAction SilentlyContinue
     
     Write-Notice "Installing Sunshine Game Streaming Server..."
-    winget install --id LizardByte.Sunshine -e --accept-package-agreements --accept-source-agreements --silent
-    Write-Success "Streaming tools installed."
+    Start-Process -FilePath "winget" `
+        -ArgumentList "install --id LizardByte.Sunshine --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
+        -NoNewWindow -Wait -ErrorAction SilentlyContinue
+    Write-Success "Streaming tools installation completed."
 }
 
 # -------------------------------------------------------------------------

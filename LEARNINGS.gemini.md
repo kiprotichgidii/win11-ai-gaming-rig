@@ -26,3 +26,4 @@
 ### Refine
 - Tested VM adapter edge cases where hypervisor virtual adapters were prematurely filtered.
 - Provided fallback logic for one-liner execution via `irm <url> | iex` for machines without Git pre-installed.
+- **Winget MSStore Bug Fix**: Resolved `Failed when searching source: msstore` common in VM / unauthenticated Windows instances by appending `--source winget` and implementing an automated direct CDN fallback download for `Docker Desktop Installer.exe`.
