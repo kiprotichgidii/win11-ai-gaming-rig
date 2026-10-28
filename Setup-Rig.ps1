@@ -27,6 +27,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Guard against empty parameter bindings when executed via Invoke-Expression (iex)
+if (-not $OllamaPort -or $OllamaPort -eq 0) { $OllamaPort = 11434 }
+if (-not $WebUIPort -or $WebUIPort -eq 0) { $WebUIPort = 3000 }
+if (-not $ComfyUIPort -or $ComfyUIPort -eq 0) { $ComfyUIPort = 8188 }
+if (-not $OllamaKeepAlive) { $OllamaKeepAlive = "5m" }
+if (-not $StackDir) { $StackDir = "C:\ai-stack" }
+if (-not $SwitchName) { $SwitchName = "Bridged-External-Switch" }
+
 function Write-Step ($msg) { Write-Host "`n[+] $msg" -ForegroundColor Cyan }
 function Write-Success ($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Notice ($msg) { Write-Host "[!] $msg" -ForegroundColor Yellow }

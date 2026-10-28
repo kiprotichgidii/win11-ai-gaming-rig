@@ -67,6 +67,116 @@ Write-Host "==> Step 5: Testing image pull resolution..." -ForegroundColor Cyan
 docker pull hello-world
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[SUCCESS] Docker DNS resolution is fully fixed!" -ForegroundColor Green
+    
+    # Auto-heal compose.yaml to guarantee non-empty ports
+    $hasNvidiaGPU = [bool](Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" })
+    $composeFile = "C:\ai-stack\compose.yaml"
+    if (-not (Test-Path "C:\ai-stack")) { New-Item -ItemType Directory -Path "C:\ai-stack" -Force | Out-Null }
+    
+    if ($hasNvidiaGPU) {
+        $clean = @"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=5m
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  comfyui:
+    image: yanwk/comfyui-boot:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - comfyui_storage:/root/ComfyUI
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  comfyui_storage:
+"@
+    } else {
+        $clean = @"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_KEEP_ALIVE=5m
+    volumes:
+      - ollama_data:/root/.ollama
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+
+  comfyui:
+    image: yanwk/comfyui-boot:latest
+    container_name: comfyui
+    restart: unless-stopped
+    ports:
+      - "8188:8188"
+    environment:
+      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+    volumes:
+      - comfyui_storage:/root/ComfyUI
+
+volumes:
+  ollama_data:
+  open_webui_data:
+  comfyui_storage:
+"@
+    }
+    Set-Content -Path $composeFile -Value $clean -Encoding UTF8
+    Write-Host "[OK] Clean compose.yaml generated at $composeFile ($(if ($hasNvidiaGPU) {'GPU'} else {'CPU'}))." -ForegroundColor Green
+
     Write-Host "Now pulling AI stack images..." -ForegroundColor Cyan
     Set-Location "C:\ai-stack"
     docker compose pull
