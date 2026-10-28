@@ -169,6 +169,46 @@ if ($osType -and $osType -ne "linux") {
     }
 }
 
+# Ensure Docker daemon has working public DNS (avoids registry lookup failures)
+$dockerConfigDir = "$env:USERPROFILE\.docker"
+$daemonJsonPath = Join-Path $dockerConfigDir "daemon.json"
+if (-not (Test-Path $dockerConfigDir)) { New-Item -ItemType Directory -Path $dockerConfigDir -Force | Out-Null }
+
+$daemonUpdated = $false
+$daemonConfig = @{}
+if (Test-Path $daemonJsonPath) {
+    try {
+        $raw = Get-Content $daemonJsonPath -Raw
+        if ($raw.Trim()) { $daemonConfig = $raw | ConvertFrom-Json -AsHashtable }
+    } catch {}
+}
+if (-not $daemonConfig.ContainsKey("dns")) {
+    $daemonConfig["dns"] = @("8.8.8.8", "1.1.1.1")
+    $daemonConfig | ConvertTo-Json -Depth 5 | Set-Content -Path $daemonJsonPath -Encoding UTF8
+    $daemonUpdated = $true
+}
+
+# Update WSL resolv.conf if WSL is accessible
+if (Get-Command wsl -ErrorAction SilentlyContinue) {
+    try {
+        wsl -u root -e sh -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && echo 'nameserver 1.1.1.1' >> /etc/resolv.conf" 2>$null
+    } catch {}
+}
+
+if ($daemonUpdated) {
+    Write-Host "==> Configured public DNS for Docker daemon. Restarting Docker..." -ForegroundColor Yellow
+    Get-Process "Docker Desktop", "com.docker.backend" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    Start-Process -FilePath $dockerExe
+    $retries = 35
+    while ($retries -gt 0) {
+        docker info >$null 2>&1
+        if ($LASTEXITCODE -eq 0) { break }
+        Start-Sleep -Seconds 2
+        $retries--
+    }
+}
+
 Write-Host "==> Pulling container images (this may take a few minutes depending on connection)..." -ForegroundColor Cyan
 Set-Location $stackDir
 docker compose pull
