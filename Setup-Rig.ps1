@@ -228,10 +228,9 @@ if ((Test-Path $dockerExe) -and (-not (Get-Process "Docker Desktop" -ErrorAction
     }
 }
 
-# Pull images and launch
+# Launch stack (uses local images if present; only downloads if missing)
 Set-Location $stackDir
-Write-Warn "Pulling images (this may take several minutes on first run)..."
-docker compose pull
+Write-Step "Starting AI stack containers..."
 docker compose up -d
 
 # ============================================================

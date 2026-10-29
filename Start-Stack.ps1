@@ -79,10 +79,9 @@ if (Test-Path "$PSScriptRoot\$srcFile") {
 $ProgressPreference = $prev
 Write-OK "compose.yaml written ($srcFile → $dest, $(if ($hasGPU) {'GPU mode'} else {'CPU mode'}))."
 
-# ── 4. Pull images + start stack ─────────────────────────────
-Write-Step "Pulling images and starting stack..."
+# ── 4. Start stack (uses cached images if present) ───────────
+Write-Step "Starting stack..."
 Set-Location $stackDir
-docker compose pull
 docker compose up -d
 
 Write-Host ""
