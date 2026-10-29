@@ -251,8 +251,12 @@ Set-Location $stackDir
 Write-Step "Starting AI stack containers..."
 docker compose up -d
 
-Write-Step "Ensuring fast embedding model (nomic-embed-text) is ready in Ollama..."
-docker exec ollama ollama pull nomic-embed-text
+Write-Step "Ensuring required chat & embedding models are loaded in Ollama..."
+$models = @("llama3.1:8b", "qwen2.5-coder:7b", "nomic-embed-text")
+foreach ($m in $models) {
+    Write-Host "Checking / loading $m..." -ForegroundColor Cyan
+    docker exec ollama ollama pull $m
+}
 
 # ============================================================
 # SUMMARY
