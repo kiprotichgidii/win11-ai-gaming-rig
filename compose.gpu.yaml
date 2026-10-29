@@ -1,5 +1,6 @@
 services:
-  # --- 1. LLM Core Engine ---
+
+  # --- LLM Engine ---
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -7,7 +8,6 @@ services:
     ports:
       - "11434:11434"
     environment:
-      # Automatically releases models from VRAM after 5 mins of idle time
       - OLLAMA_KEEP_ALIVE=5m
     volumes:
       - ollama_data:/root/.ollama
@@ -19,7 +19,7 @@ services:
               count: all
               capabilities: [gpu]
 
-  # --- 2. Conversational Web Interface ---
+  # --- Chat Interface ---
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
@@ -33,7 +33,7 @@ services:
     depends_on:
       - ollama
 
-  # --- 3. Image/Video Diffusion Pipeline ---
+  # --- Image / Video Generation ---
   comfyui:
     image: yanwk/comfyui-boot:cu130-slim-v2
     container_name: comfyui

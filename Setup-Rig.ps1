@@ -1,111 +1,70 @@
 <#
 .SYNOPSIS
-    Automated provisioner for Windows 11 AI Stack (Ollama + WebUI + ComfyUI),
-    Hyper-V Bridged Networking, and Sunshine Remote Game Streaming.
+    One-time provisioner for Windows 11: WSL2, Hyper-V, Docker, Sunshine, and the AI stack.
 .DESCRIPTION
-    1. Hardware & Environment Auto-Detection (Bare-Metal with GPU vs Test VM in CPU-mode).
-    2. Enables Hyper-V, Virtual Machine Platform, and WSL optional features.
-    3. Configures WSL2 Mirrored Networking in %USERPROFILE%\.wslconfig.
-    4. Creates Hyper-V External Virtual Switch bridged to the primary network card.
-    5. Configures Windows Defender Firewall rules for AI and Sunshine streaming.
-    6. Installs Docker Desktop, Sunshine, and ViGEmBus (virtual gamepad driver) via Winget.
-    7. Scaffolds and launches the Docker Compose stack tailored to available hardware.
+    Run this once on a fresh Windows 11 machine (bare-metal or VM).
+    If a reboot is required after enabling system features, re-run the script and it will
+    pick up from where it left off. Every phase is fully idempotent.
+.EXAMPLE
+    # Run locally:
+    .\Setup-Rig.ps1
+
+    # Run directly from GitHub (no Git required):
+    irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1?$(Get-Random)" | iex
 #>
 
 #Requires -RunAsAdministrator
-[CmdletBinding()]
-param(
-    [string]$StackDir = "C:\ai-stack",
-    [string]$SwitchName = "Bridged-External-Switch",
-    [int]$OllamaPort = 11434,
-    [int]$WebUIPort = 3000,
-    [int]$ComfyUIPort = 8188,
-    [string]$OllamaKeepAlive = "5m",
-    [switch]$SkipStreamingInstall,
-    [switch]$ForceCPU
-)
-
 $ErrorActionPreference = "Stop"
 
-# Guard against empty parameter bindings when executed via Invoke-Expression (iex)
-if (-not $OllamaPort -or $OllamaPort -eq 0) { $OllamaPort = 11434 }
-if (-not $WebUIPort -or $WebUIPort -eq 0) { $WebUIPort = 3000 }
-if (-not $ComfyUIPort -or $ComfyUIPort -eq 0) { $ComfyUIPort = 8188 }
-if (-not $OllamaKeepAlive) { $OllamaKeepAlive = "5m" }
-if (-not $StackDir) { $StackDir = "C:\ai-stack" }
-if (-not $SwitchName) { $SwitchName = "Bridged-External-Switch" }
-
 function Write-Step ($msg) { Write-Host "`n[+] $msg" -ForegroundColor Cyan }
-function Write-Success ($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
-function Write-Notice ($msg) { Write-Host "[!] $msg" -ForegroundColor Yellow }
+function Write-OK   ($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
+function Write-Warn ($msg) { Write-Host "[!]  $msg" -ForegroundColor Yellow }
 
-# -------------------------------------------------------------------------
-# Phase 0: Hardware & Environment Introspection
-# -------------------------------------------------------------------------
-Write-Step "Phase 0: Analyzing Environment & Hardware..."
+# ============================================================
+# PHASE 0 — Detect hardware (GPU vs CPU/VM)
+# ============================================================
+Write-Step "Phase 0: Detecting hardware environment..."
 
-$isVM = (Get-CimInstance Win32_ComputerSystem).Model -match "Virtual|VMware|VirtualBox|KVM|QEMU|Hyper-V"
-if ($isVM) {
-    Write-Notice "Running inside a Virtual Machine environment."
-} else {
-    Write-Success "Running on Bare-Metal hardware."
-}
+$hasGPU = [bool](Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" })
+$isVM   = (Get-CimInstance Win32_ComputerSystem).Model -match "Virtual|VMware|VirtualBox|KVM|QEMU|Hyper-V"
 
-# Check for NVIDIA GPU
-$hasNvidiaGPU = $false
-if (-not $ForceCPU) {
-    $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" }
-    if ($gpu) {
-        $hasNvidiaGPU = $true
-        Write-Success "NVIDIA GPU Detected: $($gpu.Name)"
-    } else {
-        Write-Notice "No NVIDIA GPU detected. Configuring Docker for CPU-Mode (Testing Environment)."
-    }
-} else {
-    Write-Notice "Forced CPU-Mode via parameter."
-}
+Write-OK "Mode : $(if ($hasGPU) { 'Bare-metal (NVIDIA GPU detected)' } else { 'Test VM (CPU fallback)' })"
+Write-OK "VM   : $isVM"
 
-# -------------------------------------------------------------------------
-# Phase 1: Windows Features (Hyper-V & WSL2)
-# -------------------------------------------------------------------------
-Write-Step "Phase 1: Validating Windows Features..."
+# ============================================================
+# PHASE 1 — Windows optional features
+# ============================================================
+Write-Step "Phase 1: Enabling required Windows features..."
 
-$RequiredFeatures = @(
-    "Microsoft-Hyper-V-All",
-    "VirtualMachinePlatform",
-    "Microsoft-Windows-Subsystem-Linux"
-)
+$features = @("Microsoft-Hyper-V-All", "VirtualMachinePlatform", "Microsoft-Windows-Subsystem-Linux")
+$needsReboot = $false
 
-$RebootNeeded = $false
-foreach ($feature in $RequiredFeatures) {
-    $state = Get-WindowsOptionalFeature -Online -FeatureName $feature
+foreach ($f in $features) {
+    $state = Get-WindowsOptionalFeature -Online -FeatureName $f
     if ($state.State -ne "Enabled") {
-        Write-Notice "Enabling $feature..."
-        $result = Enable-WindowsOptionalFeature -Online -FeatureName $feature -NoRestart
-        if ($result.RestartNeeded) { $RebootNeeded = $true }
+        Write-Warn "Enabling $f..."
+        $r = Enable-WindowsOptionalFeature -Online -FeatureName $f -NoRestart
+        if ($r.RestartNeeded) { $needsReboot = $true }
     } else {
-        Write-Success "$feature is already enabled."
+        Write-OK "$f already enabled."
     }
 }
 
-if ($RebootNeeded) {
-    Write-Host "`n" + ("=" * 72) -ForegroundColor Red
-    Write-Notice "CRITICAL: System features were enabled that require a PC restart."
-    Write-Notice "Please restart your PC/VM, then re-run this script to finish setup."
-    Write-Host ("=" * 72) -ForegroundColor Red
-    
-    $rebootNow = Read-Host "Would you like to reboot now? (Y/n)"
-    if ($rebootNow -ne 'n') { Restart-Computer }
+if ($needsReboot) {
+    Write-Host "`n[REBOOT REQUIRED] Re-run this script after restarting." -ForegroundColor Red
+    $ans = Read-Host "Reboot now? (Y/n)"
+    if ($ans -ne 'n') { Restart-Computer }
     return
 }
 
-# -------------------------------------------------------------------------
-# Phase 2: WSL2 Mirrored Networking Configuration
-# -------------------------------------------------------------------------
-Write-Step "Phase 2: Configuring WSL2 Mirrored Networking..."
+# ============================================================
+# PHASE 2 — WSL2 mirrored networking + permanent DNS fix
+# ============================================================
+Write-Step "Phase 2: Configuring WSL2 networking and DNS..."
 
-$wslConfigPath = "$env:USERPROFILE\.wslconfig"
-$wslConfigContent = @"
+$wslConfig = "$env:USERPROFILE\.wslconfig"
+if (-not (Test-Path $wslConfig) -or (Get-Content $wslConfig -Raw) -notmatch "networkingMode=mirrored") {
+    Set-Content $wslConfig -Encoding UTF8 -Value @"
 [wsl2]
 networkingMode=mirrored
 autoProxy=true
@@ -115,306 +74,181 @@ dnsTunneling=true
 autoMemoryReclaim=gradual
 sparseVhd=true
 "@
-
-if (Test-Path $wslConfigPath) {
-    $existing = Get-Content $wslConfigPath -Raw
-    if ($existing -notmatch "networkingMode=mirrored") {
-        Set-Content -Path $wslConfigPath -Value $wslConfigContent -Encoding UTF8
-        Write-Success "Updated $wslConfigPath with mirrored networking."
-    } else {
-        Write-Success ".wslconfig already configured."
-    }
+    Write-OK "WSL2 mirrored networking configured."
 } else {
-    Set-Content -Path $wslConfigPath -Value $wslConfigContent -Encoding UTF8
-    Write-Success "Created $wslConfigPath."
+    Write-OK "WSL2 config already set."
 }
 
-# -------------------------------------------------------------------------
-# Phase 3: Hyper-V Bridged External Virtual Switch
-# -------------------------------------------------------------------------
-Write-Step "Phase 3: Setting up Hyper-V External Bridged Switch..."
+# Permanently pin public DNS inside WSL2 (survives reboots)
+if (Get-Command wsl -ErrorAction SilentlyContinue) {
+    wsl -u root -e sh -c "echo '[network]' > /etc/wsl.conf && echo 'generateResolvConf = false' >> /etc/wsl.conf" 2>$null
+    wsl -u root -e sh -c "printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf" 2>$null
+    wsl --shutdown 2>$null
+    Write-OK "WSL2 DNS permanently set to 8.8.8.8 / 1.1.1.1."
+}
 
-$existingSwitch = Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue
-if (-not $existingSwitch) {
-    $adapter = Get-NetAdapter | Where-Object { 
-        $_.Status -eq "Up" -and 
-        $_.InterfaceDescription -notmatch "Hyper-V|vEthernet|Loopback|WSL|Default Switch"
+# Inject public DNS into Docker daemon.json
+$daemonDir  = "$env:USERPROFILE\.docker"
+$daemonJson = "$daemonDir\daemon.json"
+if (-not (Test-Path $daemonDir)) { New-Item -ItemType Directory $daemonDir -Force | Out-Null }
+'{"dns":["8.8.8.8","1.1.1.1"]}' | Set-Content $daemonJson -Encoding UTF8
+Write-OK "Docker daemon DNS set to 8.8.8.8 / 1.1.1.1."
+
+# ============================================================
+# PHASE 3 — Hyper-V external bridged switch
+# ============================================================
+Write-Step "Phase 3: Configuring Hyper-V external switch..."
+
+$switchName = "Bridged-External-Switch"
+if (-not (Get-VMSwitch -Name $switchName -ErrorAction SilentlyContinue)) {
+    $adapter = Get-NetAdapter | Where-Object {
+        $_.Status -eq "Up" -and $_.InterfaceDescription -notmatch "Hyper-V|vEthernet|Loopback|WSL"
     } | Select-Object -First 1
 
     if ($adapter) {
-        Write-Notice "Binding switch '$SwitchName' to adapter '$($adapter.Name)' ($($adapter.InterfaceDescription))..."
-        New-VMSwitch -Name $SwitchName -NetAdapterName $adapter.Name -AllowManagementOS $true | Out-Null
-        Write-Success "Hyper-V External Switch '$SwitchName' created."
+        New-VMSwitch -Name $switchName -NetAdapterName $adapter.Name -AllowManagementOS $true | Out-Null
+        Write-OK "Switch '$switchName' created on '$($adapter.Name)'."
     } else {
-        Write-Warning "Could not detect active primary network card. Configure Hyper-V switch manually."
+        Write-Warn "No physical adapter found — create the Hyper-V switch manually."
     }
 } else {
-    Write-Success "Hyper-V switch '$SwitchName' already exists."
+    Write-OK "Switch '$switchName' already exists."
 }
 
-# -------------------------------------------------------------------------
-# Phase 4: Windows Firewall Inbound Rules
-# -------------------------------------------------------------------------
-Write-Step "Phase 4: Configuring Windows Firewall Inbound Rules..."
+# ============================================================
+# PHASE 4 — Firewall rules
+# ============================================================
+Write-Step "Phase 4: Configuring firewall rules..."
 
-$Rules = @(
-    # AI Stack
-    @{ Name = "AI-Stack-Ollama";   Port = $OllamaPort;   Protocol = "TCP"; Description = "Ollama LLM API" },
-    @{ Name = "AI-Stack-OpenWebUI"; Port = $WebUIPort;    Protocol = "TCP"; Description = "Open WebUI Portal" },
-    @{ Name = "AI-Stack-ComfyUI";  Port = $ComfyUIPort;  Protocol = "TCP"; Description = "ComfyUI Interface" },
-    # Sunshine Game Streaming
-    @{ Name = "Sunshine-Web-HTTP";  Port = 47984;         Protocol = "TCP"; Description = "Sunshine Web Management" },
-    @{ Name = "Sunshine-Web-HTTPS"; Port = 47990;         Protocol = "TCP"; Description = "Sunshine Web HTTPS" },
-    @{ Name = "Sunshine-Audio";     Port = 48000;         Protocol = "UDP"; Description = "Sunshine Audio Stream" },
-    @{ Name = "Sunshine-Video";     Port = 47998;         Protocol = "UDP"; Description = "Sunshine Video Stream" },
-    @{ Name = "Sunshine-Control";   Port = 47999;         Protocol = "UDP"; Description = "Sunshine Control Stream" },
-    @{ Name = "Sunshine-QoS";       Port = 48010;         Protocol = "UDP"; Description = "Sunshine QoS Probe" }
+$rules = @(
+    @{ Name = "AI-Ollama";         Port = 11434; Proto = "TCP" },
+    @{ Name = "AI-OpenWebUI";      Port = 3000;  Proto = "TCP" },
+    @{ Name = "AI-ComfyUI";        Port = 8188;  Proto = "TCP" },
+    @{ Name = "Sunshine-HTTP";     Port = 47984; Proto = "TCP" },
+    @{ Name = "Sunshine-HTTPS";    Port = 47990; Proto = "TCP" },
+    @{ Name = "Sunshine-Video";    Port = 47998; Proto = "UDP" },
+    @{ Name = "Sunshine-Control";  Port = 47999; Proto = "UDP" },
+    @{ Name = "Sunshine-Audio";    Port = 48000; Proto = "UDP" },
+    @{ Name = "Sunshine-QoS";      Port = 48010; Proto = "UDP" }
 )
 
-foreach ($r in $Rules) {
-    $existingRule = Get-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue
-    if (-not $existingRule) {
-        New-NetFirewallRule -Name $r.Name `
-                            -DisplayName $r.Name `
-                            -Description $r.Description `
-                            -Direction Inbound `
-                            -Action Allow `
-                            -Protocol $r.Protocol `
-                            -LocalPort $r.Port `
-                            -Profile Any | Out-Null
-        Write-Success "Firewall rule created for $($r.Name) ($($r.Protocol) Port $($r.Port))."
+foreach ($r in $rules) {
+    if (-not (Get-NetFirewallRule -Name $r.Name -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -Name $r.Name -DisplayName $r.Name `
+            -Direction Inbound -Action Allow -Protocol $r.Proto `
+            -LocalPort $r.Port -Profile Any | Out-Null
+        Write-OK "Rule '$($r.Name)' ($($r.Proto) $($r.Port)) created."
     } else {
-        Write-Success "Firewall rule '$($r.Name)' is active."
+        Write-OK "Rule '$($r.Name)' already exists."
     }
 }
 
-# -------------------------------------------------------------------------
-# Phase 5: Software Installations
-# -------------------------------------------------------------------------
-Write-Step "Phase 5: Installing Required Software Packages..."
+# ============================================================
+# PHASE 5 — Software installation (Docker, Sunshine, ViGEmBus)
+# ============================================================
+Write-Step "Phase 5: Installing required software..."
 
-# 5.1 Docker Desktop
-$dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+# Helper: install via winget with direct-download fallback
+function Install-Package {
+    param($Id, $Name, $TestPath, $FallbackUrl, $FallbackArgs)
+    if ((Get-Command $Name -ErrorAction SilentlyContinue) -or (Test-Path $TestPath)) {
+        Write-OK "$Name already installed."
+        return
+    }
+    Write-Warn "Installing $Name via winget..."
+    $proc = Start-Process winget -ArgumentList "install --id $Id --source winget -e --accept-package-agreements --accept-source-agreements --silent" -NoNewWindow -Wait -PassThru
+    if ($proc.ExitCode -ne 0 -and $FallbackUrl) {
+        Write-Warn "Winget failed. Downloading $Name directly..."
+        $tmp = "$env:TEMP\$Name-installer.exe"
+        $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+        Invoke-WebRequest $FallbackUrl -OutFile $tmp -UseBasicParsing
+        $ProgressPreference = $prev
+        Start-Process $tmp -ArgumentList $FallbackArgs -Wait
+        Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    }
+    Write-OK "$Name installation complete."
+}
+
+Install-Package `
+    -Id "Docker.DockerDesktop" -Name "docker" `
+    -TestPath "C:\Program Files\Docker\Docker\Docker Desktop.exe" `
+    -FallbackUrl "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe" `
+    -FallbackArgs "install --quiet --accept-license --backend=wsl-2"
+
+Install-Package `
+    -Id "Nefarius.ViGEmBus" -Name "ViGEmBus" `
+    -TestPath "C:\Program Files\Nefarius Software Solutions\ViGEm Bus Driver\ViGEmBusDriver.exe"
+
+Install-Package `
+    -Id "LizardByte.Sunshine" -Name "Sunshine" `
+    -TestPath "C:\Program Files\Sunshine\sunshine.exe"
+
+# Refresh PATH so docker is available in this session
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" +
+            [System.Environment]::GetEnvironmentVariable("Path","User")
 $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
-$isDockerInstalled = (Get-Command docker -ErrorAction SilentlyContinue) -or (Test-Path $dockerExe)
-
-if (-not $isDockerInstalled) {
-    Write-Notice "Docker Desktop not found. Installing..."
-    $installed = $false
-    
-    # Try winget explicitly targeting community source (bypasses msstore source errors)
-    try {
-        $wingetProc = Start-Process -FilePath "winget" `
-            -ArgumentList "install --id Docker.DockerDesktop --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
-            -NoNewWindow -Wait -PassThru -ErrorAction SilentlyContinue
-            
-        if ($wingetProc.ExitCode -eq 0) {
-            $installed = $true
-            Write-Success "Docker Desktop installed via winget."
-        }
-    } catch {
-        Write-Notice "Winget execution failed: $_"
-    }
-
-    # Fallback to direct official installer download if winget fails or msstore blocked
-    if (-not $installed) {
-        Write-Notice "Winget failed or msstore blocked. Falling back to direct download from Docker..."
-        $installerUrl = "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
-        $installerPath = "$env:TEMP\DockerDesktopInstaller.exe"
-        
-        Write-Notice "Downloading Docker Desktop installer..."
-        $prevProgress = $ProgressPreference
-        $ProgressPreference = 'SilentlyContinue' # Dramatic speedup, prevents console freeze
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
-        $ProgressPreference = $prevProgress
-        
-        Write-Notice "Running Docker Desktop silent installer (WSL2 backend)..."
-        $proc = Start-Process -FilePath $installerPath -ArgumentList "install --quiet --accept-license --backend=wsl-2" -Wait -PassThru
-        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
-        
-        if ($proc.ExitCode -eq 0) {
-            Write-Success "Docker Desktop installed successfully via direct installer."
-        } else {
-            Write-Warning "Docker Desktop installer finished with exit code $($proc.ExitCode)."
-        }
-    }
-} else {
-    Write-Success "Docker Desktop is already installed on disk."
-}
-
-# Ensure Docker is accessible in current session and service is started
 if ((Test-Path $dockerBin) -and ($env:Path -notlike "*$dockerBin*")) {
     $env:Path = "$dockerBin;$env:Path"
 }
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
-if (Test-Path $dockerExe) {
-    $dockerProc = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
-    if (-not $dockerProc) {
-        Write-Notice "Launching Docker Desktop to initialize the WSL2 daemon..."
-        Start-Process -FilePath $dockerExe
-    }
-}
+# ============================================================
+# PHASE 6 — Deploy AI stack
+# ============================================================
+Write-Step "Phase 6: Deploying AI stack to C:\ai-stack..."
 
-# 5.2 Sunshine & ViGEmBus Game Controller Driver
-if (-not $SkipStreamingInstall) {
-    $vigemInstalled = Get-Service "ViGEmBus" -ErrorAction SilentlyContinue
-    if (-not $vigemInstalled) {
-        Write-Notice "Installing ViGEmBus (Virtual Gamepad Emulation Bus)..."
-        Start-Process -FilePath "winget" `
-            -ArgumentList "install --id Nefarius.ViGEmBus --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
-            -NoNewWindow -Wait -ErrorAction SilentlyContinue
-    } else {
-        Write-Success "ViGEmBus driver is already installed."
-    }
-    
-    $sunshineInstalled = (Test-Path "C:\Program Files\Sunshine\sunshine.exe") -or (Get-Service "sunshine" -ErrorAction SilentlyContinue)
-    if (-not $sunshineInstalled) {
-        Write-Notice "Installing Sunshine Game Streaming Server..."
-        Start-Process -FilePath "winget" `
-            -ArgumentList "install --id LizardByte.Sunshine --source winget -e --accept-package-agreements --accept-source-agreements --silent" `
-            -NoNewWindow -Wait -ErrorAction SilentlyContinue
-    } else {
-        Write-Success "Sunshine Game Streaming Server is already installed."
-    }
-    Write-Success "Streaming tools verification completed."
-}
+$stackDir = "C:\ai-stack"
+if (-not (Test-Path $stackDir)) { New-Item -ItemType Directory $stackDir -Force | Out-Null }
 
-# -------------------------------------------------------------------------
-# Phase 6: Generate Environment-Tailored Docker Compose
-# -------------------------------------------------------------------------
-Write-Step "Phase 6: Scaffolding Docker Compose AI Stack at $StackDir..."
+# Pick the correct compose file based on hardware; write it as compose.yaml
+$sourceFile = if ($hasGPU) { "compose.gpu.yaml" } else { "compose.cpu.yaml" }
 
-if (-not (Test-Path $StackDir)) {
-    New-Item -ItemType Directory -Path $StackDir -Force | Out-Null
-}
+# If running via iex, the source files won't exist locally — download from GitHub
+$composeDest = "$stackDir\compose.yaml"
+$rawBase = "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main"
 
-$composeTarget = Join-Path $StackDir "compose.yaml"
-
-if ($hasNvidiaGPU) {
-    $composeContent = @"
-services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_KEEP_ALIVE=5m
-    volumes:
-      - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    restart: unless-stopped
-    ports:
-      - "3000:8080"
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-    volumes:
-      - open_webui_data:/app/backend/data
-    depends_on:
-      - ollama
-
-  comfyui:
-    image: yanwk/comfyui-boot:cu130-slim-v2
-    container_name: comfyui
-    restart: unless-stopped
-    ports:
-      - "8188:8188"
-    environment:
-      - CLI_ARGS=--listen 0.0.0.0 --port 8188
-    volumes:
-      - comfyui_storage:/root/ComfyUI
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-volumes:
-  ollama_data:
-  open_webui_data:
-  comfyui_storage:
-"@
+if (-not (Test-Path "$PSScriptRoot\$sourceFile")) {
+    Write-Warn "Downloading $sourceFile from GitHub..."
+    $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest "$rawBase/$sourceFile" -OutFile $composeDest -UseBasicParsing
+    $ProgressPreference = $prev
 } else {
-    $composeContent = @"
-services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    environment:
-      - OLLAMA_KEEP_ALIVE=5m
-    volumes:
-      - ollama_data:/root/.ollama
+    Copy-Item "$PSScriptRoot\$sourceFile" $composeDest -Force
+}
+Write-OK "compose.yaml written ($sourceFile → $composeDest)."
 
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    restart: unless-stopped
-    ports:
-      - "3000:8080"
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-    volumes:
-      - open_webui_data:/app/backend/data
-    depends_on:
-      - ollama
-
-  comfyui:
-    image: yanwk/comfyui-boot:cu130-slim-v2
-    container_name: comfyui
-    restart: unless-stopped
-    ports:
-      - "8188:8188"
-    environment:
-      - CLI_ARGS=--listen 0.0.0.0 --port 8188
-    volumes:
-      - comfyui_storage:/root/ComfyUI
-
-volumes:
-  ollama_data:
-  open_webui_data:
-  comfyui_storage:
-"@
+# Start Docker Desktop if not already running
+$dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+if ((Test-Path $dockerExe) -and (-not (Get-Process "Docker Desktop" -ErrorAction SilentlyContinue))) {
+    Write-Warn "Starting Docker Desktop..."
+    Start-Process $dockerExe
+    Write-Warn "Waiting for Docker daemon (up to 60s)..."
+    for ($i = 0; $i -lt 30; $i++) {
+        docker info >$null 2>&1; if ($LASTEXITCODE -eq 0) { break }
+        Start-Sleep 2
+    }
 }
 
-Set-Content -Path $composeTarget -Value $composeContent -Encoding UTF8
-Write-Success "Generated compose.yaml ($(if ($hasNvidiaGPU) { 'GPU-Accelerated' } else { 'CPU-Testing-Mode' }))."
+# Pull images and launch
+Set-Location $stackDir
+Write-Warn "Pulling images (this may take several minutes on first run)..."
+docker compose pull
+docker compose up -d
 
-# -------------------------------------------------------------------------
-# Summary & Next Steps
-# -------------------------------------------------------------------------
-$hostIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { 
-    $_.InterfaceAlias -notmatch "vEthernet|Loopback|WSL" -and $_.IPAddress -notlike "169.254*" 
+# ============================================================
+# SUMMARY
+# ============================================================
+$hostIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
+    $_.InterfaceAlias -notmatch "vEthernet|Loopback|WSL" -and $_.IPAddress -notlike "169.254*"
 } | Select-Object -First 1).IPAddress
 
-Write-Host "`n" + ("=" * 72) -ForegroundColor Green
-Write-Host " Setup Completed Successfully!" -ForegroundColor Green
-Write-Host ("=" * 72) -ForegroundColor Green
-Write-Host "Operation Mode      : $(if ($hasNvidiaGPU) { 'Bare-Metal (NVIDIA GPU Passthrough)' } else { 'Test VM (CPU Fallback Mode)' })"
-Write-Host "Host LAN IP         : $hostIP"
-Write-Host "Ollama API          : http://${hostIP}:$OllamaPort"
-Write-Host "Open WebUI Portal   : http://${hostIP}:$WebUIPort"
-Write-Host "ComfyUI Workflow    : http://${hostIP}:$ComfyUIPort"
-Write-Host "Sunshine Web UI     : https://${hostIP}:47990"
-Write-Host "Hyper-V Bridged NIC : $SwitchName (Ready for Type-2 VMs)"
-Write-Host "`nTo start the AI stack:"
-Write-Host "  cd $StackDir" -ForegroundColor Yellow
-Write-Host "  docker compose up -d" -ForegroundColor Yellow
-Write-Host ("=" * 72)
+Write-Host "`n$(('=' * 60))" -ForegroundColor Green
+Write-Host " All done!" -ForegroundColor Green
+Write-Host "$(('=' * 60))" -ForegroundColor Green
+Write-Host " Mode        : $(if ($hasGPU) { 'GPU (NVIDIA)' } else { 'CPU (Test VM)' })"
+Write-Host " Host IP     : $hostIP"
+Write-Host " Ollama API  : http://${hostIP}:11434"
+Write-Host " Open WebUI  : http://${hostIP}:3000"
+Write-Host " ComfyUI     : http://${hostIP}:8188"
+Write-Host " Sunshine    : https://${hostIP}:47990"
+Write-Host " Hyper-V NIC : $switchName"
+Write-Host "$(('=' * 60))" -ForegroundColor Green

@@ -1,120 +1,108 @@
-# Windows 11 AI Rig, Gaming Stream & Hyper-V Automation
+# Windows 11 AI Rig, Game Streaming & Hyper-V Automation
 
-Production-ready automation suite to provision a unified Windows 11 workstation capable of hosting:
-1. **Containerized AI Services**: Ollama, Open WebUI, and ComfyUI running via Docker Desktop on WSL2 with native NVIDIA GPU acceleration.
-2. **PC Game Streaming**: Ultra-low-latency, 4K/120Hz remote gaming via Sunshine to Moonlight clients with virtual controller passthrough (ViGEmBus).
-3. **Type-2 Virtualization**: Hyper-V External Virtual Switch bridged to the physical network adapter.
+Automated provisioning for a dual-use Windows 11 workstation running an AI stack, low-latency game streaming, and bridged Hyper-V VMs — from a single PowerShell command.
 
 ---
 
-## Quick Start: One-Liner Execution on Windows 11
+## Repository Structure
 
-You do **not** need Git pre-installed on the Windows machine. Open **Windows PowerShell (Run as Administrator)** and run:
+```text
+win11-ai-gaming-rig/
+├── Setup-Rig.ps1     # Run ONCE on a new machine to provision everything
+├── Start-Stack.ps1   # Run ANYTIME to start or restart the AI stack
+├── compose.gpu.yaml  # Docker stack with NVIDIA GPU passthrough
+├── compose.cpu.yaml  # Docker stack in CPU mode (for VM testing)
+└── docs/             # Architecture and design documents
+```
+
+---
+
+## Quick Start
+
+Open **Windows PowerShell (Run as Administrator)** and paste:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+# First-time machine setup:
 irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1?$(Get-Random)" | iex
 ```
 
----
-
-## Alternative: Git Clone Execution
-
 ```powershell
-# In PowerShell (Admin)
-git clone https://github.com/kiprotichgidii/win11-ai-gaming-rig.git C:\Automate-Rig
-cd C:\Automate-Rig
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\Setup-Rig.ps1
+# Start or restart the stack at any time:
+irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Start-Stack.ps1?$(Get-Random)" | iex
 ```
 
----
-
-## Reboot Handling
-
-If Hyper-V, WSL2, or Virtual Machine Platform were not previously enabled on the target machine:
-1. The script will enable them and prompt: `Would you like to reboot now? (Y/n)`.
-2. Allow the reboot (`Y`).
-3. After rebooting, re-open **PowerShell (Admin)** and re-run `.\Setup-Rig.ps1`.
-4. It will automatically detect that features are active and complete the remaining phases.
+> **Note:** The `?$(Get-Random)` suffix bypasses GitHub's CDN cache (5-min TTL) so you always get the latest version.
 
 ---
 
-## AI Stack Handoff (For Client / JetBrains Studio / Android Studio)
+## What `Setup-Rig.ps1` Does
 
-Provide these details to the client to configure their IDE or AI tools:
+| Phase | Action |
+| :--- | :--- |
+| **0** | Detects NVIDIA GPU — auto-selects GPU or CPU mode |
+| **1** | Enables Hyper-V, VirtualMachinePlatform, and WSL2 features |
+| **2** | Configures WSL2 mirrored networking and pins permanent public DNS (8.8.8.8) |
+| **3** | Creates a Hyper-V external virtual switch bridged to the physical NIC |
+| **4** | Opens inbound firewall rules for Ollama, Open WebUI, ComfyUI, and Sunshine |
+| **5** | Installs Docker Desktop, ViGEmBus (gamepad driver), and Sunshine via winget |
+| **6** | Pulls and starts the Docker Compose AI stack |
+
+> **Reboot Handling:** If Windows features are newly enabled, the script will prompt to reboot. Re-run it after restarting — it skips completed phases automatically.
+
+---
+
+## AI Stack Services
+
+| Service | Port | Description |
+| :--- | :--- | :--- |
+| **Ollama** | `11434` | LLM inference engine (Llama, Qwen, DeepSeek) |
+| **Open WebUI** | `3000` | ChatGPT-style interface with RAG and document Q&A |
+| **ComfyUI** | `8188` | Node-based image/video generation (Stable Diffusion, Flux) |
+
+---
+
+## Client & IDE Integration (JetBrains / Android Studio)
 
 ```text
-======================================================================
-              AI RIG & STUDIO INTEGRATION HANDOFF
-======================================================================
-1. STUDIO / IDE CONFIGURATION (JetBrains / Android Studio / Continue)
-   - Protocol / Type      : Ollama / OpenAI-Compatible
-   - Native Ollama URL    : http://<Host-IP>:11434
-   - OpenAI Base URL      : http://<Host-IP>:11434/v1
-   - API Key              : ollama (or leave blank)
-   - Pre-installed Models : qwen2.5-coder:7b, llama3.1:8b
-
-2. WEB MANAGEMENT PORTALS
-   - Chat & Document RAG  : http://<Host-IP>:3000   (Open WebUI)
-   - Image & Video UI     : http://<Host-IP>:8188   (ComfyUI)
-
-3. REMOTE GAME STREAMING (Moonlight)
-   - Host IP              : <Host-IP>
-   - Sunshine Admin Panel : https://<Host-IP>:47990
-======================================================================
+Native Ollama URL     : http://<Host-IP>:11434
+OpenAI-Compatible URL : http://<Host-IP>:11434/v1
+API Key               : ollama  (or leave blank)
 ```
 
-To pre-load coding models on the rig:
+Pull a coding model after setup:
 ```powershell
 docker exec -it ollama ollama pull qwen2.5-coder:7b
-docker exec -it ollama ollama pull llama3.1:8b
 ```
 
 ---
 
----
+## Game Streaming
 
-## Starting the Stack
+Sunshine runs as a Windows service on the host. Connect from any client using [Moonlight](https://moonlight-stream.org):
 
-You can start or restart the AI stack at any time with the included helper script:
-
-```powershell
-# One-liner to refresh PATH, ensure Docker is running, and launch the stack:
-irm https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Start-Stack.ps1 | iex
-```
-
-Or manually:
-```powershell
-# 1. Refresh PATH if Docker was just installed:
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-
-# 2. Launch Docker Desktop (if not already running):
-Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-
-# 3. Start the containers:
-cd C:\ai-stack
-docker compose up -d
-```
-
----
-
-## Troubleshooting & Useful Commands
-
-| Issue / Action | Command |
+| | |
 | :--- | :--- |
-| **`docker` command not recognized** | `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")` |
-| **Check container status** | `cd C:\ai-stack; docker compose ps` |
-| **View Ollama logs** | `docker logs -f ollama` |
-| **Pull a coding model** | `docker exec -it ollama ollama pull qwen2.5-coder:7b` |
-| **Free GPU VRAM for gaming** | `docker stop comfyui` |
-| **Resume ComfyUI after gaming** | `docker start comfyui` |
-| **Verify Firewall Rules** | `Get-NetFirewallRule -Name "AI-Stack-*" \| Format-Table Name, Enabled` |
+| **Sunshine Admin** | `https://<Host-IP>:47990` |
+| **Moonlight** | Auto-discovers host on LAN — enter 4-digit PIN once |
 
 ---
 
-## Testing in a Virtual Machine (No GPU)
+## VRAM Management During Gaming
 
-The orchestrator includes automatic environment detection:
-* When executed in a VM without an NVIDIA GPU, it automatically configures **CPU-fallback mode** so containers pull and start cleanly without `driver: nvidia` runtime errors.
-* When run on bare-metal hardware with an NVIDIA GPU, it automatically injects full NVIDIA CUDA reservations.
+Ollama auto-releases VRAM after 5 minutes of idle. For ComfyUI:
+```powershell
+docker stop comfyui   # Free VRAM before gaming
+docker start comfyui  # Resume after gaming
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+| :--- | :--- |
+| `docker: not recognized` | `$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")` |
+| Images fail to resolve | Run `Setup-Rig.ps1` again — it pins WSL2 DNS to 8.8.8.8 permanently |
+| Docker Hub rate limited | `docker login` with a free Docker Hub account |
+| Port error in compose | Run `Start-Stack.ps1` — it always writes a clean compose.yaml |
+| VM testing (no GPU) | Script auto-detects and uses `compose.cpu.yaml` |
