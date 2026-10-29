@@ -228,7 +228,25 @@ if ((Test-Path $dockerExe) -and (-not (Get-Process "Docker Desktop" -ErrorAction
     }
 }
 
-# Launch stack (uses local images if present; only downloads if missing)
+# Verify images (pulls ONLY if missing locally)
+Write-Step "Verifying container images..."
+$requiredImages = @(
+    "ollama/ollama:latest",
+    "ghcr.io/open-webui/open-webui:main",
+    "yanwk/comfyui-boot:cu130-slim-v2"
+)
+
+foreach ($img in $requiredImages) {
+    docker image inspect $img >$null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "Image '$img' exists locally. Skipping pull."
+    } else {
+        Write-Warn "Image '$img' not found. Pulling from registry..."
+        docker pull $img
+    }
+}
+
+# Launch stack
 Set-Location $stackDir
 Write-Step "Starting AI stack containers..."
 docker compose up -d

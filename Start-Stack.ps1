@@ -79,8 +79,25 @@ if (Test-Path "$PSScriptRoot\$srcFile") {
 $ProgressPreference = $prev
 Write-OK "compose.yaml written ($srcFile → $dest, $(if ($hasGPU) {'GPU mode'} else {'CPU mode'}))."
 
-# ── 4. Start stack (uses cached images if present) ───────────
-Write-Step "Starting stack..."
+# ── 4. Verify images (pulls ONLY if missing locally) ─────────
+Write-Step "Verifying container images..."
+$requiredImages = @(
+    "ollama/ollama:latest",
+    "ghcr.io/open-webui/open-webui:main",
+    "yanwk/comfyui-boot:cu130-slim-v2"
+)
+
+foreach ($img in $requiredImages) {
+    docker image inspect $img >$null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-OK "Image '$img' exists locally. Skipping pull."
+    } else {
+        Write-Warn "Image '$img' not found. Pulling from registry..."
+        docker pull $img
+    }
+}
+
+Write-Step "Starting stack containers..."
 Set-Location $stackDir
 docker compose up -d
 

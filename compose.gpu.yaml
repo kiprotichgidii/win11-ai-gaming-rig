@@ -3,6 +3,7 @@ services:
   # --- LLM Engine ---
   ollama:
     image: ollama/ollama:latest
+    pull_policy: if_not_present
     container_name: ollama
     restart: unless-stopped
     ports:
@@ -22,6 +23,7 @@ services:
   # --- Chat Interface ---
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
+    pull_policy: if_not_present
     container_name: open-webui
     restart: unless-stopped
     ports:
@@ -36,6 +38,7 @@ services:
   # --- Image / Video Generation ---
   comfyui:
     image: yanwk/comfyui-boot:cu130-slim-v2
+    pull_policy: if_not_present
     container_name: comfyui
     restart: unless-stopped
     ports:
