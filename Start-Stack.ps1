@@ -101,6 +101,9 @@ Write-Step "Starting stack containers..."
 Set-Location $stackDir
 docker compose up -d
 
+Write-Step "Ensuring fast embedding model (nomic-embed-text) is ready in Ollama..."
+docker exec ollama ollama pull nomic-embed-text
+
 Write-Host ""
 docker compose ps
 

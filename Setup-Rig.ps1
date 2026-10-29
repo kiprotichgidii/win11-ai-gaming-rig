@@ -251,6 +251,9 @@ Set-Location $stackDir
 Write-Step "Starting AI stack containers..."
 docker compose up -d
 
+Write-Step "Ensuring fast embedding model (nomic-embed-text) is ready in Ollama..."
+docker exec ollama ollama pull nomic-embed-text
+
 # ============================================================
 # SUMMARY
 # ============================================================
