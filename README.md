@@ -43,9 +43,10 @@ irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/S
 | **1** | Enables Hyper-V, VirtualMachinePlatform, and WSL2 features |
 | **2** | Configures WSL2 mirrored networking and pins permanent public DNS (8.8.8.8) |
 | **3** | Creates a Hyper-V external virtual switch bridged to the physical NIC |
-| **4** | Opens inbound firewall rules for Ollama, Open WebUI, ComfyUI, and Sunshine |
+| **4** | Opens inbound Windows & Hyper-V firewall rules for Ollama, Open WebUI, ComfyUI, and Sunshine |
 | **5** | Installs Docker Desktop, ViGEmBus (gamepad driver), and Sunshine via winget |
 | **6** | Pulls and starts the Docker Compose AI stack |
+| **7** | Registers Windows Scheduled Task to auto-start stack and launch Docker on reboot |
 
 > **Reboot Handling:** If Windows features are newly enabled, the script will prompt to reboot. Re-run it after restarting — it skips completed phases automatically.
 

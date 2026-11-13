@@ -63,7 +63,7 @@ if ($needsReboot) {
 Write-Step "Phase 2: Configuring WSL2 networking and DNS..."
 
 $wslConfig = "$env:USERPROFILE\.wslconfig"
-if (-not (Test-Path $wslConfig) -or (Get-Content $wslConfig -Raw) -notmatch "networkingMode=mirrored") {
+if (-not (Test-Path $wslConfig) -or (Get-Content $wslConfig -Raw) -notmatch "hostAddressLoopback=true") {
     Set-Content $wslConfig -Encoding UTF8 -Value @"
 [wsl2]
 networkingMode=mirrored
@@ -71,10 +71,11 @@ autoProxy=true
 dnsTunneling=true
 
 [experimental]
+hostAddressLoopback=true
 autoMemoryReclaim=gradual
 sparseVhd=true
 "@
-    Write-OK "WSL2 mirrored networking configured."
+    Write-OK "WSL2 mirrored networking configured with hostAddressLoopback=true."
 } else {
     Write-OK "WSL2 config already set."
 }
@@ -116,9 +117,9 @@ if (-not (Get-VMSwitch -Name $switchName -ErrorAction SilentlyContinue)) {
 }
 
 # ============================================================
-# PHASE 4 — Firewall rules
+# PHASE 4 — Firewall rules (Windows Defender & Hyper-V)
 # ============================================================
-Write-Step "Phase 4: Configuring firewall rules..."
+Write-Step "Phase 4: Configuring firewall rules (Host & Hyper-V)..."
 
 $rules = @(
     @{ Name = "AI-Ollama";         Port = 11434; Proto = "TCP" },
@@ -137,10 +138,36 @@ foreach ($r in $rules) {
         New-NetFirewallRule -Name $r.Name -DisplayName $r.Name `
             -Direction Inbound -Action Allow -Protocol $r.Proto `
             -LocalPort $r.Port -Profile Any | Out-Null
-        Write-OK "Rule '$($r.Name)' ($($r.Proto) $($r.Port)) created."
+        Write-OK "Windows Firewall rule '$($r.Name)' ($($r.Proto) $($r.Port)) created."
     } else {
-        Write-OK "Rule '$($r.Name)' already exists."
+        Write-OK "Windows Firewall rule '$($r.Name)' already exists."
     }
+}
+
+# Open Hyper-V VM Firewall for WSL2 mirrored networking inbound traffic
+try {
+    $vmCreator = Get-NetFirewallHyperVVMCreator -ErrorAction SilentlyContinue
+    if ($vmCreator) {
+        $vmCreatorId = $vmCreator.VMCreatorId
+        $hyperVRules = @(
+            @{ Name = "WSL-AI-Ollama";   Port = 11434; Proto = "TCP" },
+            @{ Name = "WSL-AI-OpenWebUI"; Port = 3000;  Proto = "TCP" },
+            @{ Name = "WSL-AI-ComfyUI";  Port = 8188;  Proto = "TCP" }
+        )
+        foreach ($hr in $hyperVRules) {
+            $existing = Get-NetFirewallHyperVRule -Name $hr.Name -ErrorAction SilentlyContinue
+            if (-not $existing) {
+                New-NetFirewallHyperVRule -Name $hr.Name -DisplayName $hr.Name `
+                    -Direction Inbound -VMCreatorId $vmCreatorId -Action Allow `
+                    -Protocol $hr.Proto -LocalPorts $hr.Port | Out-Null
+                Write-OK "Hyper-V Firewall rule '$($hr.Name)' created."
+            } else {
+                Write-OK "Hyper-V Firewall rule '$($hr.Name)' already exists."
+            }
+        }
+    }
+} catch {
+    Write-Warn "Hyper-V Firewall rule configuration skipped or not supported on this build."
 }
 
 # ============================================================
@@ -257,6 +284,45 @@ foreach ($m in $models) {
     Write-Host "Checking / loading $m..." -ForegroundColor Cyan
     docker exec ollama ollama pull $m
 }
+
+# ============================================================
+# PHASE 7 — Persist on Reboot (Scheduled Task & Auto-Start)
+# ============================================================
+Write-Step "Phase 7: Configuring automated startup on system reboot..."
+
+# 1. Enable Docker Desktop auto-start on user logon
+$dockerSettingsPath = "$env:APPDATA\Docker\settings.json"
+if (Test-Path $dockerSettingsPath) {
+    try {
+        $settings = Get-Content $dockerSettingsPath -Raw | ConvertFrom-Json
+        $settings.openAtLogin = $true
+        $settings | ConvertTo-Json -Depth 10 | Set-Content $dockerSettingsPath -Encoding UTF8
+        Write-OK "Docker Desktop openAtLogin set to true."
+    } catch {
+        Write-Warn "Could not update Docker settings.json automatically."
+    }
+}
+
+# 2. Register Windows Scheduled Task to launch the AI stack at system boot
+$taskName = "Start-AI-Stack"
+$startScriptDest = "$stackDir\Start-Stack.ps1"
+if (-not (Test-Path $startScriptDest)) {
+    $rawBase = "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main"
+    $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
+    Invoke-WebRequest "$rawBase/Start-Stack.ps1" -OutFile $startScriptDest -UseBasicParsing
+    $ProgressPreference = $prev
+}
+
+$taskAction = New-ScheduledTaskAction -Execute "powershell.exe" `
+    -Argument "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File `"$startScriptDest`""
+
+$taskTrigger = New-ScheduledTaskTrigger -AtLogOn
+$taskPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+Register-ScheduledTask -TaskName $taskName -Action $taskAction `
+    -Trigger $taskTrigger -Principal $taskPrincipal -Settings $taskSettings -Force | Out-Null
+Write-OK "Scheduled Task '$taskName' registered to launch at logon with elevated privileges."
 
 # ============================================================
 # SUMMARY
