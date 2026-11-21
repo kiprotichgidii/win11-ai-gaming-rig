@@ -11,7 +11,7 @@
     .\Start-Stack.ps1
 
     # Run from GitHub (bypasses CDN cache):
-    irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Start-Stack.ps1?$(Get-Random)" | iex
+    irm "https://raw.githubusercontent.com/kiprotichgidii/jbstudio-simrig/main/Start-Stack.ps1?$(Get-Random)" | iex
 #>
 
 #Requires -RunAsAdministrator
@@ -24,7 +24,7 @@ function Write-Warn ($msg) { Write-Host "[!]  $msg" -ForegroundColor Yellow }
 $stackDir  = "C:\ai-stack"
 $dockerExe = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
 $dockerBin = "C:\Program Files\Docker\Docker\resources\bin"
-$rawBase   = "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main"
+$rawBase   = "https://raw.githubusercontent.com/kiprotichgidii/jbstudio-simrig/main"
 
 # ── 1. Refresh PATH ──────────────────────────────────────────
 Write-Step "Refreshing PATH..."

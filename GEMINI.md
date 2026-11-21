@@ -14,7 +14,7 @@ Automated, zero-touch provisioning of a dual-use Windows 11 workstation capable 
 
 ## Key Directory & File Structure
 ```text
-win11-ai-gaming-rig/
+jbstudio-simrig/
 ├── Setup-Rig.ps1          # Master idempotent orchestrator
 ├── Install-Streaming.ps1  # Dedicated Sunshine + ViGEmBus installer
 ├── compose.yaml           # Multi-service AI stack (Ollama + Open WebUI + ComfyUI)

@@ -10,7 +10,7 @@
     .\Setup-Rig.ps1
 
     # Run directly from GitHub (no Git required):
-    irm "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main/Setup-Rig.ps1?$(Get-Random)" | iex
+    irm "https://raw.githubusercontent.com/kiprotichgidii/jbstudio-simrig/main/Setup-Rig.ps1?$(Get-Random)" | iex
 #>
 
 #Requires -RunAsAdministrator
@@ -231,7 +231,7 @@ $sourceFile = if ($hasGPU) { "compose.gpu.yaml" } else { "compose.cpu.yaml" }
 
 # If running via iex, the source files won't exist locally — download from GitHub
 $composeDest = "$stackDir\compose.yaml"
-$rawBase = "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main"
+$rawBase = "https://raw.githubusercontent.com/kiprotichgidii/jbstudio-simrig/main"
 
 if (-not (Test-Path "$PSScriptRoot\$sourceFile")) {
     Write-Warn "Downloading $sourceFile from GitHub..."
@@ -307,7 +307,7 @@ if (Test-Path $dockerSettingsPath) {
 $taskName = "Start-AI-Stack"
 $startScriptDest = "$stackDir\Start-Stack.ps1"
 if (-not (Test-Path $startScriptDest)) {
-    $rawBase = "https://raw.githubusercontent.com/kiprotichgidii/win11-ai-gaming-rig/main"
+    $rawBase = "https://raw.githubusercontent.com/kiprotichgidii/jbstudio-simrig/main"
     $prev = $ProgressPreference; $ProgressPreference = "SilentlyContinue"
     Invoke-WebRequest "$rawBase/Start-Stack.ps1" -OutFile $startScriptDest -UseBasicParsing
     $ProgressPreference = $prev
